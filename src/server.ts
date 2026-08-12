@@ -1,10 +1,11 @@
 import http from 'http';
 import express, { Express, NextFunction, Request, Response } from 'express';
 import morgan from 'morgan';
-import routes from './routes/bookings.js';
-import prisma from './prisma.js';
 import swaggerUi from 'swagger-ui-express';
-import swaggerDocument from './swagger.json' with { type: 'json' };
+import { generateOpenApi } from '@ts-rest/open-api';
+import prisma from './prisma.js';
+import bookingRoutes from './modules/bookings/booking.routes.js';
+import { bookingContract } from './modules/bookings/booking.contract.js';
 
 export const app: Express = express();
 
@@ -12,10 +13,24 @@ app.use(morgan('dev'));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-app.use('/api-docs', swaggerUi.serve);
-app.get('/api-docs', swaggerUi.setup(swaggerDocument));
+// Generate OpenAPI spec dynamically from @ts-rest contract (Zero Drift)
+export const openApiDocument = generateOpenApi(
+    bookingContract,
+    {
+        info: {
+            title: 'Limehome Booking API',
+            version: '1.0.0',
+            description: 'Contract-first Express API using @ts-rest and Zod',
+        },
+    },
+    {
+        setOperationId: true,
+    }
+);
 
-app.use('/', routes);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiDocument));
+
+app.use('/', bookingRoutes);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
     const error = new Error('Not found');

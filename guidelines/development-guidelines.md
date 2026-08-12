@@ -1,56 +1,140 @@
-# API Development Guidelines: Express, Prisma & TypeScript
+# API Development Guidelines: Express, Prisma, TypeScript, @ts-rest & Zod
 
-This document outlines the core coding guidelines and patterns for our **Express.js + Prisma + TypeScript** application. The focus is on **strict type safety**, **clean request/response handling**, and **maintaining explicit API contracts**.
+This document outlines the core coding guidelines, architectural standards, and contract-first patterns for our **Express.js + Prisma + TypeScript** applications. The focus is on **Contract-First API Architecture with `@ts-rest`**, **end-to-end type safety with Zod**, **Feature-Driven (Vertical Slice) modules**, and **automatic OpenAPI documentation**.
 
 ---
 
-## 1. Type Safety & Contracts
+## 1. Architectural Structure (Feature-Driven & Contract-First)
+
+Applications are organized by functional domain (Feature Modules). Each module encapsulates its API contract, controllers, services, utilities, and tests under `src/modules/<feature-name>/`.
+
+### Module Directory Standard
+
+```text
+src/modules/<feature-name>/
+├── <feature>.contract.ts   # @ts-rest contract & Zod input/output schemas
+├── <feature>.controller.ts # @ts-rest express handler implementation & response mappers
+├── <feature>.service.ts    # Core domain business logic & Prisma database calls
+├── <feature>.utils.ts      # Domain-specific helper utilities & calculations
+└── <feature>.test.ts       # Feature-specific integration & unit tests
+```
+
+---
+
+## 2. Contract-First API Design (@ts-rest + Zod)
+
+All HTTP endpoints MUST be defined in a feature contract using `@ts-rest/core` and **Zod** before implementing controllers or services.
 
 ### Strict Prohibition of `any`
 
 > [!CAUTION]
 > The use of `any` (or unsafe type casting such as `as any` or `as unknown as Type`) is **STRICTLY BANNED** across the entire codebase under any circumstances.
-> You must **never** write, accept, or approve code that uses `any` to bypass TypeScript checks. Every variable, function parameter, and return value MUST be strongly and explicitly typed.
+> Every variable, schema, request parameter, and response body MUST be strongly and explicitly typed.
 
-### Interfaces & Types
-- Define explicit TypeScript `interface` or `type` definitions for request payloads and response bodies.
-- Keep optional fields (`fieldName?: string`) distinct from nullable fields (`fieldName: string | null`):
-  - `fieldName?: string` means the field can be omitted from the JSON body.
-  - `fieldName: string | null` means the key must exist, but its value can explicitly be `null`.
+### Contract & Schema Definition Standard
+
+- **Single Source of Truth**: Define API contracts using `initContract().router(...)`.
+- **Input Validation**: Use Zod schemas for `body`, `pathParams`, and `query`.
+- **Response Schemas**: Specify expected Zod schemas for every HTTP status code (`200`, `400`, `404`, etc.).
+
+```typescript
+import { initContract } from '@ts-rest/core';
+import { z } from 'zod';
+
+const c = initContract();
+
+export const BookingResponseSchema = z.object({
+  id: z.number().int(),
+  guestName: z.string(),
+  unitID: z.string(),
+  checkInDate: z.string().datetime(),
+  numberOfNights: z.number().int(),
+  checkOutDate: z.string().datetime(),
+});
+
+export const bookingContract = c.router({
+  extendBooking: {
+    method: 'POST',
+    path: '/api/v1/booking/:id/extend',
+    pathParams: z.object({
+      id: z.coerce.number().int(),
+    }),
+    body: z.object({
+      extraNights: z.number().int().positive('extraNights must be a positive integer'),
+    }),
+    responses: {
+      200: BookingResponseSchema,
+      400: z.string(),
+      404: z.string(),
+    },
+    summary: 'Extend an active booking',
+  },
+});
+```
 
 ---
 
-## 2. Controllers & HTTP Handlers
+## 3. Controllers & Static Type Safety (@ts-rest/express)
 
-Controllers are responsible for receiving HTTP requests, processing business logic directly via Prisma ORM, and returning JSON responses.
+Controllers implement the contract using `@ts-rest/express` (`initServer().router(...)`).
 
-### Explicit Response Mapping (Preventing Data Leaks)
-- **FUNDAMENTAL RULE**: Controllers must NEVER directly return raw database instances output by Prisma if they contain sensitive or internal database fields.
-- Always map raw Prisma query results explicitly to your response types before returning them in `res.json()` (e.g., `return res.status(200).json({ id: result.id, guestName: result.guestName })`).
+### Prohibition of Un-Typed `res.json()`
 
-### Handling Non-Error Missing States
-- When a queried resource is absent, but its absence is a **valid and expected state** in the application domain (e.g., a guest with no current booking):
-  - Do not throw an unhandled server error.
-  - Return a clean `200 OK` response with a structured JSON indicating the empty/null state (e.g., `{ booking: null }`).
+- Handlers MUST NOT use raw, untyped Express `res.json(...)` or `res.status(...)` calls.
+- Handlers MUST return a typed object matching the contract structure: `{ status: <statusCode>, body: <data> }`.
+- **Compiler Safety**: If the object in `body` does not match the contract Zod schema for that status code, the TypeScript compiler WILL fail the build at compile time.
 
-### No-Content Responses
-- Endpoints that perform state-changing operations (such as updates or deletes) where returning data to the client is unnecessary should respond with `204 No Content` or `200 OK` with an explicit acknowledgment status.
+```typescript
+import { initServer } from '@ts-rest/express';
+import { bookingContract } from './booking.contract.js';
+
+const s = initServer();
+
+export const bookingController = s.router(bookingContract, {
+  extendBooking: async ({ params, body }) => {
+    // Input (params & body) is automatically parsed & typed by @ts-rest and Zod
+    const outcome = await bookingService.extendBooking(params.id, body.extraNights);
+
+    if (!outcome.success) {
+      return { status: 400, body: outcome.reason };
+    }
+
+    // Static compiler check: returning non-matching body fields triggers a build error
+    return {
+      status: 200,
+      body: outcome.booking,
+    };
+  },
+});
+```
+
+### Zero-Drift OpenAPI / Swagger Generation
+
+- Do NOT manually edit JSON or YAML OpenAPI files.
+- Automatically generate the OpenAPI specification directly from `@ts-rest` contracts and serve it via `swagger-ui-express`. This guarantees 100% synchronization between implementation and documentation.
 
 ---
 
-## 3. Database Access (Prisma ORM)
+## 4. Service Layer & Database Access (Prisma ORM)
 
-All database operations are performed directly within handlers/helpers using **Prisma Client**.
+Services encapsulate domain logic and database queries using **Prisma Client**.
+
+### Express Decoupling
+
+- Service functions MUST be completely decoupled from Express HTTP objects (`Request`, `Response`).
+- Services accept typed inputs and return domain-specific types or result objects.
 
 ### Parallel Query Execution
-- When fetching dataset lists alongside total counts (e.g., for pagination or multi-table queries), always execute queries in parallel using `Promise.all()` to minimize HTTP response times:
+
+- For pagination or multi-query operations, execute queries in parallel using `Promise.all()` to minimize latency:
 
 ```typescript
 const [bookings, total] = await Promise.all([
-    prisma.booking.findMany({ where: { unitID }, skip, take }),
-    prisma.booking.count({ where: { unitID } }),
+  prisma.booking.findMany({ where: { unitID }, skip, take }),
+  prisma.booking.count({ where: { unitID } }),
 ]);
 ```
 
-### Business Rule Checks
-- Keep domain checks (e.g., checking unit availability, guest conflict rules) clearly structured into helper functions to keep main route handlers clean and readable.
+### Transaction Safety
+
+- Multi-record state updates MUST execute within a Prisma transaction (`prisma.$transaction([...])`) to ensure atomic operations and rollback safety.

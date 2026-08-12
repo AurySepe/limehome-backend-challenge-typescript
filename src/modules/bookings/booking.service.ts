@@ -1,13 +1,7 @@
 import { addDays, startOfDay, isBefore } from 'date-fns';
-import prisma from '../prisma.js';
+import prisma from '../../prisma.js';
 import { Booking as BookingModel } from '@prisma/client';
-
-export interface BookingPayload {
-    guestName: string;
-    unitID: string;
-    checkInDate: Date;
-    numberOfNights: number;
-}
+import { BookingInput } from './booking.contract.js';
 
 export type BookingOutcome = { result: boolean; reason: string };
 
@@ -15,8 +9,6 @@ export function getCheckOutDate(checkInDate: Date, numberOfNights: number): Date
     return addDays(new Date(checkInDate), numberOfNights);
 }
 
-// Helper: checks for date range overlaps.
-// Check-out date is excluded because a new guest can check in on the same day an existing guest checks out.
 export function getOverlapFilter(checkInDate: Date, checkOutDate: Date) {
     return {
         checkInDate: { lt: checkOutDate },
@@ -24,12 +16,10 @@ export function getOverlapFilter(checkInDate: Date, checkOutDate: Date) {
     };
 }
 
-export async function isBookingPossible(booking: BookingPayload): Promise<BookingOutcome> {
-    // Defensively normalize checkInDate to midnight using date-fns startOfDay
+export async function isBookingPossible(booking: BookingInput): Promise<BookingOutcome> {
     const checkInDate = startOfDay(new Date(booking.checkInDate));
     const checkOutDate = getCheckOutDate(checkInDate, booking.numberOfNights);
     const overlapFilter = getOverlapFilter(checkInDate, checkOutDate);
-
 
     // check 1 : The same guest cannot book the same unit for overlapping dates
     const sameGuestSameUnit = await prisma.booking.findFirst({
@@ -68,12 +58,25 @@ export async function isBookingPossible(booking: BookingPayload): Promise<Bookin
     return { result: true, reason: "OK" };
 }
 
+export async function createBookingRecord(bookingPayload: BookingInput): Promise<BookingModel> {
+    const checkInDate = startOfDay(new Date(bookingPayload.checkInDate));
+    const checkOutDate = getCheckOutDate(checkInDate, bookingPayload.numberOfNights);
+
+    return prisma.booking.create({
+        data: {
+            guestName: bookingPayload.guestName,
+            unitID: bookingPayload.unitID,
+            checkInDate,
+            numberOfNights: bookingPayload.numberOfNights,
+            checkOutDate,
+        }
+    });
+}
+
 export async function isExtensionPossible(
     existingBooking: BookingModel,
     extraNights: number
 ): Promise<BookingOutcome & { newCheckOutDate?: Date; previousCheckOutDate?: Date }> {
-    // Normalize current date to midnight using date-fns startOfDay for date-only comparison.
-    // This allows guests to extend their stay during their check-out day before the date passes.
     const today = startOfDay(new Date());
     if (isBefore(new Date(existingBooking.checkOutDate), today)) {
         return { result: false, reason: "Cannot extend a booking that has already ended" };
@@ -115,3 +118,29 @@ export async function isExtensionPossible(
     };
 }
 
+export async function extendBookingRecord(
+    existingBooking: BookingModel,
+    extraNights: number,
+    previousCheckOutDate: Date,
+    newCheckOutDate: Date
+): Promise<BookingModel> {
+    const [extension, updatedBooking] = await prisma.$transaction([
+        prisma.bookingExtension.create({
+            data: {
+                bookingId: existingBooking.id,
+                extraNights,
+                previousCheckOutDate,
+                newCheckOutDate,
+            }
+        }),
+        prisma.booking.update({
+            where: { id: existingBooking.id },
+            data: {
+                numberOfNights: existingBooking.numberOfNights + extraNights,
+                checkOutDate: newCheckOutDate,
+            }
+        })
+    ]);
+
+    return updatedBooking;
+}
