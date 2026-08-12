@@ -103,4 +103,19 @@ describe('Booking API', () => {
         const message = await response2.json();
         assert.equal(message, 'For the given check-in date, the unit is already occupied');
     });
+
+    it('Same guest same unit booking non-overlapping future dates', async () => {
+        const response1 = await postBooking(GUEST_A_UNIT_1);
+        assert.equal(response1.status, 200);
+
+        // Book 10 days in the future (after the 5 nights stay ends)
+        const futureDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const response2 = await postBooking({
+            unitID: '1',
+            guestName: 'GuestA',
+            checkInDate: futureDate,
+            numberOfNights: 3,
+        });
+        assert.equal(response2.status, 200);
+    });
 });

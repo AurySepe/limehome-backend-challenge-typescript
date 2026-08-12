@@ -8,9 +8,10 @@ generator client {
 }
 
 model Booking {
-  id             Int     @id @default(autoincrement())
+  id             Int      @id @default(autoincrement())
   guestName      String
   unitID         String
   checkInDate    DateTime
   numberOfNights Int
+  checkOutDate   DateTime
 }
