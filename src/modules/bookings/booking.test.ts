@@ -134,4 +134,32 @@ describe('Booking Creation API', () => {
             })
             .expect(200);
     });
+
+    it('Concurrent identical requests create at most one booking', async () => {
+        const [res1, res2] = await Promise.all([
+            request(app.getHttpServer()).post('/api/v1/booking').send(GUEST_A_UNIT_1),
+            request(app.getHttpServer()).post('/api/v1/booking').send(GUEST_A_UNIT_1),
+        ]);
+
+        const winner = [res1, res2].find(r => r.status === 200);
+        const loser = [res1, res2].find(r => r.status !== 200);
+
+        // Exactly one request must succeed and one must be rejected
+        expect(winner).toBeDefined();
+        expect(loser).toBeDefined();
+
+        // The rejected request must return a 400 with a known conflict message
+        expect(loser!.status).toBe(400);
+        expect([
+            'The given guest name cannot book the same unit multiple times',
+            'The same guest cannot be in multiple units at the same time',
+            'For the given check-in date, the unit is already occupied',
+        ]).toContain(loser!.body);
+
+        // Regardless of HTTP outcome, the database must contain exactly one booking
+        const bookings = await prisma.booking.findMany({
+            where: { unitID: GUEST_A_UNIT_1.unitID, guestName: GUEST_A_UNIT_1.guestName },
+        });
+        expect(bookings).toHaveLength(1);
+    });
 });

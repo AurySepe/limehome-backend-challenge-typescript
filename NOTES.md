@@ -1,3 +1,5 @@
+This file serves to document the project refactoring, moving it from the trial version of the challenge to a more professional and structured environment. I know it wasn't required by the challenge, which is why it's placed in a separate branch, but I thought it could be a good talking point for the technical interview. If you haven't looked at the main branch yet, there is no need to read this document since it is a continuation of the NOTES.md explanation from the main branch.
+
 ### Code Refactoring & Validation Framework
 
 The project was rewritten using the **NestJS** framework, primarily to leverage its native automatic validation capabilities on endpoints and to manage the underlying infrastructure in a more robust and consistent manner.
@@ -5,7 +7,7 @@ The project was rewritten using the **NestJS** framework, primarily to leverage 
 The codebase has been reorganized into a **feature-based module structure** (Vertical Slice Architecture):
 - Each feature resides in its own dedicated directory containing all the necessary files.
 - **DTOs**: precisely define the input and output data types for the APIs.
-- **Controllers**: handle request extraction and data mapping.
+- **Controllers**: handle request extraction anda data mapping.
 - **Services**: encapsulate all domain business logic.
 - **Tests**: each module includes a dedicated test suite for that feature.
 
@@ -25,3 +27,9 @@ The testing setup has been significantly enhanced to include both unit tests and
 I implemented a multi-stage Docker build to produce a final image containing only the strict minimum required to run the application. I also integrated a dedicated test stage inside the multi-stage pipeline, making it impossible to produce an image that does not pass the test suite, which is fundamental for preventing the release of broken code to production.
 
 A smaller image also improves startup latency, reduces the attack surface, and lowers upload times and storage costs on the container registry.
+
+### Concurrency and Transactions
+
+I identified a TOCTOU (Time-Of-Check / Time-Of-Use) race condition in both the booking creation and the booking extension flows. Since the availability check and the write operation were two separate steps with no atomicity guarantee between them, two concurrent requests could both pass the check and both commit, producing inconsistent state such as double-booked units.
+
+To address this, I wrapped the check and write phases inside a single Prisma interactive transaction with serializable isolation level, initiated and owned by the controller. Service methods receive the transaction client as a parameter, keeping business logic in the service while the controller owns the transactional boundary. I also added a concurrent integration test that fires two identical requests simultaneously and asserts that exactly one succeeds and only one record is created in the database.

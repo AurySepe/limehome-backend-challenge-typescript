@@ -25,25 +25,36 @@ export class BookingExtensionController {
         @Param('id', ParseIntPipe) id: number,
         @Body() body: ExtendBookingInputDto
     ): Promise<BookingDto> {
-        const existingBooking = await prisma.booking.findUnique({
-            where: { id },
-        });
+        const updatedBooking = await prisma.$transaction(async (tx) => {
+            const existingBooking = await tx.booking.findUnique({
+                where: { id },
+            });
 
-        if (!existingBooking) {
-            throw new HttpException('Booking not found', HttpStatus.NOT_FOUND);
-        }
+            if (!existingBooking) {
+                throw new HttpException('Booking not found', HttpStatus.NOT_FOUND);
+            }
 
-        const outcome = await this.bookingExtensionService.isExtensionPossible(existingBooking, body.extraNights);
-        if (!outcome.result) {
-            throw new HttpException(outcome.reason, HttpStatus.BAD_REQUEST);
-        }
+            const outcome = await this.bookingExtensionService.isExtensionPossible(existingBooking, body.extraNights, tx);
+            if (!outcome.result) {
+                throw new HttpException(outcome.reason, HttpStatus.BAD_REQUEST);
+            }
 
-        const updatedBooking = await this.bookingExtensionService.extendBookingRecord(
-            existingBooking,
-            body.extraNights,
-            outcome.previousCheckOutDate!,
-            outcome.newCheckOutDate!
-        );
+            const updatedBooking = await this.bookingExtensionService.extendBookingRecord(
+                existingBooking,
+                body.extraNights,
+                outcome.previousCheckOutDate!,
+                outcome.newCheckOutDate!,
+                tx
+            );
+
+            // Check inside the callback so that a failed optimistic lock causes Prisma to rollback
+            // the entire transaction (including the bookingExtension.create already executed)
+            if (!updatedBooking) {
+                throw new HttpException('Booking was concurrently modified, please retry', HttpStatus.CONFLICT);
+            }
+
+            return updatedBooking;
+        }, { isolationLevel: 'Serializable' });
 
         return new BookingDto({
             id: updatedBooking.id,

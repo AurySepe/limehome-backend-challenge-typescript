@@ -2,6 +2,7 @@ import { Controller, Post, Body, HttpException, HttpStatus, Inject, HttpCode } f
 import { ApiTags, ApiOkResponse, ApiBadRequestResponse } from '@nestjs/swagger';
 import { BookingService } from './booking.service';
 import { BookingDto, CreateBookingDto } from './booking.dto';
+import prisma from '../../prisma';
 
 @ApiTags('booking')
 @Controller('api/v1/booking')
@@ -16,12 +17,13 @@ export class BookingController {
         schema: { type: 'string', example: 'The given guest name cannot book the same unit multiple times' },
     })
     async createBooking(@Body() body: CreateBookingDto): Promise<BookingDto> {
-        const outcome = await this.bookingService.isBookingPossible(body);
-        if (!outcome.result) {
-            throw new HttpException(outcome.reason, HttpStatus.BAD_REQUEST);
-        }
-
-        const booking = await this.bookingService.createBookingRecord(body);
+        const booking = await prisma.$transaction(async (tx) => {
+            const outcome = await this.bookingService.isBookingPossible(body, tx);
+            if (!outcome.result) {
+                throw new HttpException(outcome.reason, HttpStatus.BAD_REQUEST);
+            }
+            return this.bookingService.createBookingRecord(body, tx);
+        }, { isolationLevel: 'Serializable' });
 
         return new BookingDto({
             id: booking.id,

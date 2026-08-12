@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { isBefore, startOfDay } from 'date-fns';
-import prisma from '../../prisma';
+import { PrismaTransactionClient } from '../../prisma';
 import { Booking as BookingModel } from '@prisma/client';
 import { getCheckOutDate, getOverlapFilter, BookingOutcome } from '../bookings/booking.service';
 
@@ -8,7 +8,8 @@ import { getCheckOutDate, getOverlapFilter, BookingOutcome } from '../bookings/b
 export class BookingExtensionService {
     async isExtensionPossible(
         existingBooking: BookingModel,
-        extraNights: number
+        extraNights: number,
+        tx: PrismaTransactionClient
     ): Promise<BookingOutcome & { newCheckOutDate?: Date; previousCheckOutDate?: Date }> {
         const today = startOfDay(new Date());
         if (isBefore(new Date(existingBooking.checkOutDate), today)) {
@@ -19,7 +20,7 @@ export class BookingExtensionService {
         const newCheckOutDate = getCheckOutDate(previousCheckOutDate, extraNights);
         const extensionOverlapFilter = getOverlapFilter(previousCheckOutDate, newCheckOutDate);
 
-        const guestConflict = await prisma.booking.findFirst({
+        const guestConflict = await tx.booking.findFirst({
             where: {
                 guestName: existingBooking.guestName,
                 id: { not: existingBooking.id },
@@ -30,7 +31,7 @@ export class BookingExtensionService {
             return { result: false, reason: "The same guest cannot be in multiple units at the same time" };
         }
 
-        const unitConflict = await prisma.booking.findFirst({
+        const unitConflict = await tx.booking.findFirst({
             where: {
                 unitID: existingBooking.unitID,
                 id: { not: existingBooking.id },
@@ -53,26 +54,33 @@ export class BookingExtensionService {
         existingBooking: BookingModel,
         extraNights: number,
         previousCheckOutDate: Date,
-        newCheckOutDate: Date
-    ): Promise<BookingModel> {
-        const [extension, updatedBooking] = await prisma.$transaction([
-            prisma.bookingExtension.create({
-                data: {
-                    bookingId: existingBooking.id,
-                    extraNights,
-                    previousCheckOutDate,
-                    newCheckOutDate,
-                }
-            }),
-            prisma.booking.update({
-                where: { id: existingBooking.id },
-                data: {
-                    numberOfNights: existingBooking.numberOfNights + extraNights,
-                    checkOutDate: newCheckOutDate,
-                }
-            })
-        ]);
+        newCheckOutDate: Date,
+        tx: PrismaTransactionClient
+    ): Promise<BookingModel | null> {
+        await tx.bookingExtension.create({
+            data: {
+                bookingId: existingBooking.id,
+                extraNights,
+                previousCheckOutDate,
+                newCheckOutDate,
+            }
+        });
 
-        return updatedBooking;
+        // Optimistic locking: only update if checkOutDate hasn't changed since we read it.
+        // If a concurrent extension already committed, the WHERE won't match and count = 0.
+        const result = await tx.booking.updateMany({
+            where: { id: existingBooking.id, checkOutDate: previousCheckOutDate },
+            data: {
+                numberOfNights: existingBooking.numberOfNights + extraNights,
+                checkOutDate: newCheckOutDate,
+            }
+        });
+
+        if (result.count === 0) {
+            // Signal the controller to rollback and return a conflict response
+            return null;
+        }
+
+        return tx.booking.findUniqueOrThrow({ where: { id: existingBooking.id } });
     }
 }

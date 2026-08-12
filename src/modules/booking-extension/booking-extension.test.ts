@@ -86,4 +86,5 @@ describe('Booking Extension API', () => {
             .send({ extraNights: 2 })
             .expect(404);
     });
+
 });

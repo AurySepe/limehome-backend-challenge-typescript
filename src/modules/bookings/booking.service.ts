@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { addDays, startOfDay } from 'date-fns';
-import prisma from '../../prisma';
+import prisma, { PrismaTransactionClient } from '../../prisma';
 import { Booking as BookingModel } from '@prisma/client';
 import { CreateBookingDto } from './booking.dto';
 
@@ -19,12 +19,12 @@ export function getOverlapFilter(checkInDate: Date, checkOutDate: Date) {
 
 @Injectable()
 export class BookingService {
-    async isBookingPossible(booking: CreateBookingDto): Promise<BookingOutcome> {
+    async isBookingPossible(booking: CreateBookingDto, tx: PrismaTransactionClient): Promise<BookingOutcome> {
         const checkInDate = startOfDay(new Date(booking.checkInDate));
         const checkOutDate = getCheckOutDate(checkInDate, booking.numberOfNights);
         const overlapFilter = getOverlapFilter(checkInDate, checkOutDate);
 
-        const sameGuestSameUnit = await prisma.booking.findFirst({
+        const sameGuestSameUnit = await tx.booking.findFirst({
             where: {
                 guestName: booking.guestName,
                 unitID: booking.unitID,
@@ -35,7 +35,7 @@ export class BookingService {
             return { result: false, reason: "The given guest name cannot book the same unit multiple times" };
         }
 
-        const sameGuestAlreadyBooked = await prisma.booking.findFirst({
+        const sameGuestAlreadyBooked = await tx.booking.findFirst({
             where: {
                 guestName: booking.guestName,
                 ...overlapFilter,
@@ -45,7 +45,7 @@ export class BookingService {
             return { result: false, reason: "The same guest cannot be in multiple units at the same time" };
         }
 
-        const unitOccupiedOnDate = await prisma.booking.findFirst({
+        const unitOccupiedOnDate = await tx.booking.findFirst({
             where: {
                 unitID: booking.unitID,
                 ...overlapFilter,
@@ -58,11 +58,11 @@ export class BookingService {
         return { result: true, reason: "OK" };
     }
 
-    async createBookingRecord(bookingPayload: CreateBookingDto): Promise<BookingModel> {
+    async createBookingRecord(bookingPayload: CreateBookingDto, tx: PrismaTransactionClient): Promise<BookingModel> {
         const checkInDate = startOfDay(new Date(bookingPayload.checkInDate));
         const checkOutDate = getCheckOutDate(checkInDate, bookingPayload.numberOfNights);
 
-        return prisma.booking.create({
+        return tx.booking.create({
             data: {
                 guestName: bookingPayload.guestName,
                 unitID: bookingPayload.unitID,
