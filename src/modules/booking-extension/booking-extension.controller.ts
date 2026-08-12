@@ -1,9 +1,10 @@
-import { Controller, Post, Param, Body, ParseIntPipe, HttpException, HttpStatus, Inject, HttpCode } from '@nestjs/common';
-import { ApiTags, ApiOkResponse, ApiBadRequestResponse, ApiNotFoundResponse } from '@nestjs/swagger';
+import { Controller, Post, Param, Body, ParseIntPipe, ParseUUIDPipe, HttpException, HttpStatus, Inject, HttpCode } from '@nestjs/common';
+import { ApiTags, ApiOkResponse, ApiBadRequestResponse, ApiNotFoundResponse, ApiHeader } from '@nestjs/swagger';
 import prisma from '../../prisma';
 import { BookingExtensionService } from './booking-extension.service';
 import { ExtendBookingInputDto } from './booking-extension.dto';
 import { BookingDto } from '../bookings/booking.dto';
+import { IdempotencyKey } from '../../common/decorators/idempotency-key.decorator';
 
 @ApiTags('booking-extension')
 @Controller('api/v1/booking')
@@ -12,9 +13,19 @@ export class BookingExtensionController {
 
     @Post(':id/extend')
     @HttpCode(200)
+    @ApiHeader({
+        name: 'Idempotency-Key',
+        required: true,
+        description: 'Mandatory UUID string to prevent duplicate stay extensions',
+        schema: {
+            type: 'string',
+            format: 'uuid',
+            example: '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d',
+        },
+    })
     @ApiOkResponse({ type: () => BookingDto, description: 'Booking extended successfully' })
     @ApiBadRequestResponse({
-        description: 'Booking extension failed due to date conflict or invalid booking status',
+        description: 'Booking extension failed due to date conflict, invalid booking status, or missing/invalid Idempotency-Key',
         schema: { type: 'string', example: 'For the requested extension dates, the unit is already occupied' },
     })
     @ApiNotFoundResponse({
@@ -23,6 +34,7 @@ export class BookingExtensionController {
     })
     async extendBooking(
         @Param('id', ParseIntPipe) id: number,
+        @IdempotencyKey(new ParseUUIDPipe({ errorHttpStatusCode: HttpStatus.BAD_REQUEST })) idempotencyKey: string,
         @Body() body: ExtendBookingInputDto
     ): Promise<BookingDto> {
         const updatedBooking = await prisma.$transaction(async (tx) => {
@@ -32,6 +44,16 @@ export class BookingExtensionController {
 
             if (!existingBooking) {
                 throw new HttpException('Booking not found', HttpStatus.NOT_FOUND);
+            }
+
+            const existingExtension = await this.bookingExtensionService.findExistingExtensionByIdempotencyKey(
+                id,
+                idempotencyKey,
+                tx
+            );
+
+            if (existingExtension) {
+                return existingBooking;
             }
 
             const outcome = await this.bookingExtensionService.isExtensionPossible(existingBooking, body.extraNights, tx);
@@ -44,6 +66,7 @@ export class BookingExtensionController {
                 body.extraNights,
                 outcome.previousCheckOutDate!,
                 outcome.newCheckOutDate!,
+                idempotencyKey,
                 tx
             );
 

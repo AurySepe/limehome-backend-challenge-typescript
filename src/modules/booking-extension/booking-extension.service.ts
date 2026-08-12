@@ -50,11 +50,25 @@ export class BookingExtensionService {
         };
     }
 
+    async findExistingExtensionByIdempotencyKey(
+        bookingId: number,
+        idempotencyKey: string,
+        tx: PrismaTransactionClient
+    ) {
+        return tx.bookingExtension.findFirst({
+            where: {
+                bookingId,
+                idempotencyKey,
+            },
+        });
+    }
+
     async extendBookingRecord(
         existingBooking: BookingModel,
         extraNights: number,
         previousCheckOutDate: Date,
         newCheckOutDate: Date,
+        idempotencyKey: string,
         tx: PrismaTransactionClient
     ): Promise<BookingModel | null> {
         await tx.bookingExtension.create({
@@ -63,6 +77,7 @@ export class BookingExtensionService {
                 extraNights,
                 previousCheckOutDate,
                 newCheckOutDate,
+                idempotencyKey,
             }
         });
 

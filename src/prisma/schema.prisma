@@ -24,6 +24,7 @@ model BookingExtension {
   extraNights          Int
   previousCheckOutDate DateTime
   newCheckOutDate      DateTime
+  idempotencyKey       String   @unique
   createdAt            DateTime @default(now())
 }
 
