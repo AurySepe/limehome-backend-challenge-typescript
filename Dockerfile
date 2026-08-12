@@ -24,7 +24,7 @@ COPY test ./test
 ENV DATABASE_URL="file:./test.db" 
 RUN npx prisma migrate deploy && npm test && touch /tests-passed
 
-# Stage 3: Prune stage (crea i node_modules per la produzione)
+# Stage 3: Prune stage (produces production node_modules)
 FROM builder AS pruner
 RUN npm prune --omit=dev
 
@@ -36,7 +36,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 COPY prisma.config.ts ./
 
-# Copiamo i node_modules dal pruner, non dal builder!
+# Copy node_modules from the pruner stage, not from the builder!
 COPY --from=pruner /app/node_modules ./node_modules
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/src/prisma ./src/prisma
