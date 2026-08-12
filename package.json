@@ -11,7 +11,7 @@
     "postinstall": "prisma generate",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "test": "prisma migrate deploy && NODE_ENV=test node --import tsx --test --test-concurrency=1 test/*.test.ts"
+    "test": "prisma migrate deploy && cross-env NODE_ENV=test node --import tsx --test --test-concurrency=1 test/*.test.ts"
   },
   "keywords": [],
   "author": "",
@@ -29,6 +29,7 @@
   "devDependencies": {
     "@types/sqlite3": "^3.1.8",
     "@types/swagger-ui-express": "^4.1.8",
+    "cross-env": "^10.1.0",
     "prisma": "^6.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.7.0"

@@ -50,7 +50,8 @@ interface ExtendBookingRequest {
 
 const extendBooking = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const bookingId = parseInt(req.params.id, 10);
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const bookingId = parseInt(idParam, 10);
         const { extraNights }: ExtendBookingRequest = req.body;
 
 
