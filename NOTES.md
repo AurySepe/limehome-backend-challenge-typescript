@@ -16,6 +16,7 @@ I added 2 skills that guide the way I work with AI:
 
 When starting the project with Docker, an error occurred because the `prisma.config.ts` file was not being copied into the container image. As a result, the Prisma schema could not be found at startup. It seemed strange to me, as I expected the project to be ready to run out of the box since it was set up this way, not sure if my local docker setup was the issue, but I don't think it was.
 I solved the problem by adding a copy command for the `prisma.config.ts` file to the Dockerfile.
+I also updated the compose setup to run `prisma migrate deploy` at startup in order to ensure that the schema is always up to date with the code insted of `db push` because it is more consistent.
 
 
 ### Overlapping Bookings Bug Fix
@@ -29,3 +30,21 @@ After making this change, I implemented a utility to calculate the check-out dat
 I also added a test to verify that a user could re-book the same room for a new date range that does not conflict with the previous one.
 
 Initially, I wanted to remove the first check (the one verifying if the user has already booked that specific room for those exact dates), which is technically already covered by the subsequent two checks. However, removing it would have caused existing tests to fail due to a different error message, so I kept it. Is the purpose of this extra check solely to provide a clearer error message? If so, I would consider removing it.
+
+### Booking Extension Feature & Architecture Refactoring
+
+I implemented the new API endpoint `POST /api/v1/booking/:id/extend` to allow guests to extend an active booking by a specified number of extra nights (`extraNights`).
+
+I decided that the extension should be possible until the end of the check-out day, provided that the unit is available and not occupied by other guests, and that the user does not have another booking at the same time as the extension.
+
+I could have simply updated the `Booking` table and extended the number of nights directly in the database. However, in that way, it would not be possible to know that an extension had taken place in the past. Having that information can be useful for audit reasons or to create a better user experience (for example, the frontend could show that you extended your stay and present a dedicated screen). For this reason, I added a new table that saves the history of extensions made for a reservation, while also updating the original booking.
+
+Since the controller file was getting bloated, I decided to move the validation logic for both routes into a service file to make it more readable.
+
+The check verifies that the booking is active and that the extended dates do not conflict with other bookings. If the extension is possible, I return a success response with the new check-out date and the updated number of nights; otherwise, I return the reason why the extension is not possible.
+
+I then use a transaction to create the extension record and update the booking table. This ensures that if something goes wrong in one of the operations, the other is rolled back, keeping the database in a consistent state. (Transactions should also be used to handle concurrent requests, but I kept the implementation simpler for this version).
+
+I added new tests and divided them into separate files for each feature to improve readability.
+
+To ensure that dates are checked only by day rather than hours and milliseconds (which are irrelevant for these checks), I added the `date-fns` library. It provides reliable helpers to normalize JavaScript dates to full days, making date comparisons much more reliable.

@@ -1,1 +1,190 @@
-{"openapi":"3.0.1","info":{"title":"OpenAPI definition","version":"v0"},"servers":[{"url":"http://localhost:8000","description":"Generated server url"}],"paths":{"/api/v1/booking":{"post":{"tags":["booking-controller"],"operationId":"createBooking","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/BookingInput"}}},"required":true},"responses":{"200":{"description":"OK","content":{"*/*":{"schema":{"type":"object"}}}}}}},"/":{"get":{"tags":["booking-controller"],"operationId":"helloWorld","responses":{"200":{"description":"OK","content":{"*/*":{"schema":{"$ref":"#/components/schemas/HealthResponse"}}}}}}}},"components":{"schemas":{"BookingInput":{"type":"object","properties":{"guestName":{"type":"string"},"unitID":{"type":"string"},"checkInDate":{"type":"string","format":"date"},"numberOfNights":{"type":"integer","format":"int32"}}},"HealthResponse":{"type":"object","properties":{"message":{"type":"string"}}}}}}
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "OpenAPI definition",
+    "version": "v0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Generated server url"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "booking-controller"
+        ],
+        "operationId": "helloWorld",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/booking": {
+      "post": {
+        "tags": [
+          "booking-controller"
+        ],
+        "operationId": "createBooking",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      }
+    },
+    "/api/v1/booking/{id}/extend": {
+      "post": {
+        "tags": [
+          "booking-controller"
+        ],
+        "summary": "Extend an active booking",
+        "operationId": "extendBooking",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ID of the booking to extend",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtendBookingInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Booking extended successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Booking ended, invalid extraNights, or date conflict"
+          },
+          "404": {
+            "description": "Booking not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BookingInput": {
+        "type": "object",
+        "properties": {
+          "guestName": {
+            "type": "string"
+          },
+          "unitID": {
+            "type": "string"
+          },
+          "checkInDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "numberOfNights": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "guestName",
+          "unitID",
+          "checkInDate",
+          "numberOfNights"
+        ]
+      },
+      "ExtendBookingInput": {
+        "type": "object",
+        "properties": {
+          "extraNights": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "extraNights"
+        ]
+      },
+      "BookingResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "guestName": {
+            "type": "string"
+          },
+          "unitID": {
+            "type": "string"
+          },
+          "checkInDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "numberOfNights": {
+            "type": "integer"
+          },
+          "checkOutDate": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

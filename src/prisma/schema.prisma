@@ -8,10 +8,22 @@ generator client {
 }
 
 model Booking {
-  id             Int      @id @default(autoincrement())
+  id             Int                @id @default(autoincrement())
   guestName      String
   unitID         String
   checkInDate    DateTime
   numberOfNights Int
   checkOutDate   DateTime
+  extensions     BookingExtension[]
 }
+
+model BookingExtension {
+  id                   Int      @id @default(autoincrement())
+  bookingId            Int
+  booking              Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  extraNights          Int
+  previousCheckOutDate DateTime
+  newCheckOutDate      DateTime
+  createdAt            DateTime @default(now())
+}
+

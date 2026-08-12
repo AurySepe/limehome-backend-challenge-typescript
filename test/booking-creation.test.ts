@@ -1,6 +1,6 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer, stopServer } from '../src/server';
+import { startServer, stopServer } from '../src/server.js';
 import { PrismaClient } from '@prisma/client';
 
 const BASE_URL = 'http://localhost:8000';
@@ -48,7 +48,7 @@ beforeEach(async () => {
     await prisma.booking.deleteMany();
 });
 
-describe('Booking API', () => {
+describe('Booking Creation API', () => {
     it('Create fresh booking', async () => {
         const response = await postBooking(GUEST_A_UNIT_1);
         assert.equal(response.status, 200);

@@ -5,4 +5,5 @@ COPY prisma.config.ts ./
 COPY src/prisma src/prisma
 RUN npm ci
 EXPOSE 8000
-CMD ["sh", "-c", "npx prisma db push && npx tsx watch src/server.ts"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx watch src/server.ts"]
+

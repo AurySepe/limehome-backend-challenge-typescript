@@ -1,36 +1,31 @@
 import { Request, Response, NextFunction } from 'express';
+import { startOfDay } from 'date-fns';
 import prisma from '../prisma.js';
-
-interface Booking {
-    guestName: string;
-    unitID: string;
-    checkInDate: Date;
-    numberOfNights: number;
-}
+import {
+    BookingPayload,
+    getCheckOutDate,
+    isBookingPossible,
+    isExtensionPossible
+} from '../services/bookings.js';
 
 const healthCheck = async (req: Request, res: Response, next: NextFunction) => {
     return res.status(200).json({
         message: "OK"
-    })
-}
-
-function getCheckOutDate(checkInDate: Date, numberOfNights: number): Date {
-    const checkOut = new Date(checkInDate);
-    checkOut.setDate(checkOut.getDate() + numberOfNights);
-    return checkOut;
-}
+    });
+};
 
 const createBooking = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const booking: Booking = req.body;
+        const booking: BookingPayload = req.body;
 
         const outcome = await isBookingPossible(booking);
         if (!outcome.result) {
             return res.status(400).json(outcome.reason);
         }
 
-        const checkInDate = new Date(booking.checkInDate);
+        const checkInDate = startOfDay(new Date(booking.checkInDate));
         const checkOutDate = getCheckOutDate(checkInDate, booking.numberOfNights);
+
 
         const bookingResult = await prisma.booking.create({
             data: {
@@ -47,59 +42,61 @@ const createBooking = async (req: Request, res: Response, next: NextFunction) =>
         console.error("createBooking error:", error);
         return res.status(500).json({ error: String(error) });
     }
+};
+
+interface ExtendBookingRequest {
+    extraNights: number;
 }
 
-type bookingOutcome = { result: boolean; reason: string };
+const extendBooking = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const bookingId = parseInt(req.params.id, 10);
+        const { extraNights }: ExtendBookingRequest = req.body;
 
-// Helper: checks for date range overlaps.
-// Check-out date is excluded because a new guest can check in on the same day an existing guest checks out.
-function getOverlapFilter(checkInDate: Date, checkOutDate: Date) {
-    return {
-        checkInDate: { lt: checkOutDate },
-        checkOutDate: { gt: checkInDate },
-    };
-}
 
-async function isBookingPossible(booking: Booking): Promise<bookingOutcome> {
-    const checkInDate = new Date(booking.checkInDate);
-    const checkOutDate = getCheckOutDate(checkInDate, booking.numberOfNights);
-    const overlapFilter = getOverlapFilter(checkInDate, checkOutDate);
+        const existingBooking = await prisma.booking.findUnique({
+            where: { id: bookingId }
+        });
 
-    // check 1 : The same guest cannot book the same unit for overlapping dates
-    const sameGuestSameUnit = await prisma.booking.findFirst({
-        where: {
-            guestName: booking.guestName,
-            unitID: booking.unitID,
-            ...overlapFilter,
-        },
-    });
-    if (sameGuestSameUnit) {
-        return { result: false, reason: "The given guest name cannot book the same unit multiple times" };
+        if (!existingBooking) {
+            return res.status(404).json("Booking not found");
+        }
+
+        const extensionCheck = await isExtensionPossible(existingBooking, extraNights);
+        if (!extensionCheck.result || !extensionCheck.previousCheckOutDate || !extensionCheck.newCheckOutDate) {
+            return res.status(400).json(extensionCheck.reason);
+        }
+
+        const [extension, updatedBooking] = await prisma.$transaction([
+            prisma.bookingExtension.create({
+                data: {
+                    bookingId,
+                    extraNights,
+                    previousCheckOutDate: extensionCheck.previousCheckOutDate,
+                    newCheckOutDate: extensionCheck.newCheckOutDate,
+                }
+            }),
+            prisma.booking.update({
+                where: { id: bookingId },
+                data: {
+                    numberOfNights: existingBooking.numberOfNights + extraNights,
+                    checkOutDate: extensionCheck.newCheckOutDate,
+                }
+            })
+        ]);
+
+        return res.status(200).json({
+            id: updatedBooking.id,
+            guestName: updatedBooking.guestName,
+            unitID: updatedBooking.unitID,
+            checkInDate: updatedBooking.checkInDate,
+            numberOfNights: updatedBooking.numberOfNights,
+            checkOutDate: updatedBooking.checkOutDate,
+        });
+    } catch (error) {
+        console.error("extendBooking error:", error);
+        return res.status(500).json({ error: String(error) });
     }
+};
 
-    // check 2 : the same guest cannot be in multiple units at the same time (overlapping dates)
-    const sameGuestAlreadyBooked = await prisma.booking.findFirst({
-        where: {
-            guestName: booking.guestName,
-            ...overlapFilter,
-        },
-    });
-    if (sameGuestAlreadyBooked) {
-        return { result: false, reason: "The same guest cannot be in multiple units at the same time" };
-    }
-
-    // check 3 : Unit is available for the requested dates (allowing same-day check-out and check-in)
-    const unitOccupiedOnDate = await prisma.booking.findFirst({
-        where: {
-            unitID: booking.unitID,
-            ...overlapFilter,
-        },
-    });
-    if (unitOccupiedOnDate) {
-        return { result: false, reason: "For the given check-in date, the unit is already occupied" };
-    }
-
-    return { result: true, reason: "OK" };
-}
-
-export default { healthCheck, createBooking }
+export default { healthCheck, createBooking, extendBooking };
