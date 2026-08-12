@@ -1,3 +1,11 @@
+### Multiple Branches by Complexity
+
+This project features a simplified architecture, which I assume was designed by choice to enable a quick review process and evaluate problem-solving at this level of complexity. However, I decided to provide two versions of the challenge:
+
+- **Main Branch**: Respects the initial project setup and its simplified structure without over-engineering it.
+- **Advanced Branch (`refactoring-typescript-challenge`)**: Reflects how I would structure a real-world production project. It includes a more organized, modular architecture with better file separation, strong input and output data validation with automatic OpenAPI/Swagger integration, and transaction management to prevent concurrent request issues.
+
+
 # AI Project Setup
 
 In every project of mine, I add two core skills to manage the AI. Probably, for this specific version, an extensive and organized use of AI was not essential because it is a relatively small and simple project. However, I added the setup anyway because I think it is interesting for you to evaluate how I usually integrate this technology into my work.

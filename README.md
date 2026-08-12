@@ -3,6 +3,19 @@
 > You may also complete this challenge in
 > [Python](https://github.com/limehome/backend-challenge-python).
 
+---
+
+## Note on Project Versions & Branch Structure
+
+> **Note added by candidate**:
+> This project features a simplified architecture, which I assume was designed by choice to enable a quick review process and evaluate problem-solving at this level of complexity. However, I decided to provide two versions of the challenge:
+>
+> - **Main Branch (`main`)**: Respects the initial project setup and its simplified structure without over-engineering it.
+> - **Advanced Branch (`refactoring-typescript-challenge`)**: Reflects how I would structure a real-world production project. It includes a more organized, modular architecture with better file separation, strong input and output data validation with automatic OpenAPI/Swagger integration, and transaction management to prevent concurrent request issues.
+
+---
+
+
 ## Context
 
 We would like you to help us with a small service that we have for handling bookings. A booking for us simply tells us which guest will be staying in which unit, and when they arrive and the number of nights that guest will be enjoying our amazing suites, comfortable beds, great snac.. apologies - I got distracted.
