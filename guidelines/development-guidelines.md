@@ -1,140 +1,110 @@
-# API Development Guidelines: Express, Prisma, TypeScript, @ts-rest & Zod
+# API Development Guidelines: NestJS, DTOs, Controllers & Services
 
-This document outlines the core coding guidelines, architectural standards, and contract-first patterns for our **Express.js + Prisma + TypeScript** applications. The focus is on **Contract-First API Architecture with `@ts-rest`**, **end-to-end type safety with Zod**, **Feature-Driven (Vertical Slice) modules**, and **automatic OpenAPI documentation**.
+This document provides a structured set of architectural guidelines and conventions for building NestJS applications. Strong validation, type safety, and Swagger OpenAPI inheritance ensure a clean and maintainable codebase.
 
 ---
 
-## 1. Architectural Structure (Feature-Driven & Contract-First)
+## 1. Architectural Directory & Module Structure
 
-Applications are organized by functional domain (Feature Modules). Each module encapsulates its API contract, controllers, services, utilities, and tests under `src/modules/<feature-name>/`.
+The application is structured into **Feature-Driven (Vertical Slice) Modules**. Each functional domain resides in its own isolated directory inside `src/modules/<feature-name>/`.
 
-### Module Directory Standard
+### Root & Application Layout
 
 ```text
-src/modules/<feature-name>/
-├── <feature>.contract.ts   # @ts-rest contract & Zod input/output schemas
-├── <feature>.controller.ts # @ts-rest express handler implementation & response mappers
-├── <feature>.service.ts    # Core domain business logic & Prisma database calls
-├── <feature>.utils.ts      # Domain-specific helper utilities & calculations
-└── <feature>.test.ts       # Feature-specific integration & unit tests
+src/
+├── app.module.ts            # Root NestJS module aggregating feature modules
+├── prisma.ts                # Shared Prisma ORM client instance
+├── server.ts                # Application bootstrap (ValidationPipe, SwaggerModule)
+└── modules/
+    ├── health/              # Health check domain module
+    │   ├── health.dto.ts
+    │   ├── health.controller.ts
+    │   ├── health.module.ts
+    │   └── health.test.ts
+    ├── bookings/            # Core booking management module
+    │   ├── booking.dto.ts
+    │   ├── booking.controller.ts
+    │   ├── booking.service.ts
+    │   ├── booking.module.ts
+    │   └── booking.test.ts
+    └── booking-extension/   # Booking extension feature module
+        ├── booking-extension.dto.ts
+        ├── booking-extension.controller.ts
+        ├── booking-extension.service.ts
+        ├── booking-extension.module.ts
+        └── booking-extension.test.ts
+```
+
+### Module File Responsibilities
+
+| File Pattern | Purpose & Responsibilities |
+| :--- | :--- |
+| `<feature>.dto.ts` | Defines input/output DTO classes decorated with `@ApiProperty()` and `class-validator` rules, containing standard constructors. |
+| `<feature>.controller.ts` | NestJS `@Controller()` handling HTTP endpoints, request extraction, service calls, and explicit DTO response mapping. |
+| `<feature>.service.ts` | NestJS `@Injectable()` service encapsulating business logic, domain checks, and Prisma ORM database calls. |
+| `<feature>.module.ts` | NestJS `@Module()` registering the feature's controllers, providers, and exports. |
+| `<feature>.test.ts` | Integration and unit test suite verifying feature endpoints and business logic. |
+
+---
+
+## 2. DTOs (Data Transfer Objects)
+
+DTOs act both as validation schemas for incoming JSON payloads and as OpenAPI contracts for TypeScript and Swagger. DTOs MUST be built using `class-validator`, `class-transformer`, and `@nestjs/swagger`.
+
+### Swagger Inheritance Principle
+
+Define a single base class for entity reading/responses (e.g., `CustomerDto`), and derive write DTOs (e.g., `CreateCustomerDto`) using `@nestjs/swagger` utilities.
+
+- **`@ApiProperty()`**: Every single property returned by a Controller or used in a request payload MUST be decorated with `@ApiProperty()`.
+- **Specific Number Types**: In TypeScript, integers and floats share the `number` type. Specify integer properties explicitly: `@ApiProperty({ type: 'integer' })`.
+- **`OmitType`**: Use `OmitType` for creation DTOs when auto-generated fields (such as `id`) should be excluded.
+
+### Standard Constructor for Compile-Time Type Safety
+
+Every DTO **MUST** feature a constructor accepting an object of its own type, using `plainToInstance`:
+
+```typescript
+import { plainToInstance } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsNumber, IsString } from 'class-validator';
+
+export class CustomerDto {
+  @ApiProperty({ type: 'integer' })
+  @IsNumber()
+  id!: number;
+
+  @ApiProperty()
+  @IsString()
+  name!: string;
+
+  constructor(data: CustomerDto) {
+    Object.assign(this, plainToInstance(CustomerDto, data));
+  }
+}
 ```
 
 ---
 
-## 2. Contract-First API Design (@ts-rest + Zod)
+## 3. Controllers
 
-All HTTP endpoints MUST be defined in a feature contract using `@ts-rest/core` and **Zod** before implementing controllers or services.
+Controllers process HTTP requests, invoke Services, and explicitly map domain objects to DTOs.
+
+### Mandatory Return Type Annotations & Explicit Mapping
+
+Every endpoint MUST have an explicit DTO return type annotation (`Promise<MyResponseDto>`).
+
+> [!IMPORTANT]
+> Controllers MUST NEVER return raw database entities (e.g., Prisma objects) directly. The Controller's responsibility is to map Service results manually into DTO instances.
 
 ### Strict Prohibition of `any`
 
-> [!CAUTION]
-> The use of `any` (or unsafe type casting such as `as any` or `as unknown as Type`) is **STRICTLY BANNED** across the entire codebase under any circumstances.
-> Every variable, schema, request parameter, and response body MUST be strongly and explicitly typed.
-
-### Contract & Schema Definition Standard
-
-- **Single Source of Truth**: Define API contracts using `initContract().router(...)`.
-- **Input Validation**: Use Zod schemas for `body`, `pathParams`, and `query`.
-- **Response Schemas**: Specify expected Zod schemas for every HTTP status code (`200`, `400`, `404`, etc.).
-
-```typescript
-import { initContract } from '@ts-rest/core';
-import { z } from 'zod';
-
-const c = initContract();
-
-export const BookingResponseSchema = z.object({
-  id: z.number().int(),
-  guestName: z.string(),
-  unitID: z.string(),
-  checkInDate: z.string().datetime(),
-  numberOfNights: z.number().int(),
-  checkOutDate: z.string().datetime(),
-});
-
-export const bookingContract = c.router({
-  extendBooking: {
-    method: 'POST',
-    path: '/api/v1/booking/:id/extend',
-    pathParams: z.object({
-      id: z.coerce.number().int(),
-    }),
-    body: z.object({
-      extraNights: z.number().int().positive('extraNights must be a positive integer'),
-    }),
-    responses: {
-      200: BookingResponseSchema,
-      400: z.string(),
-      404: z.string(),
-    },
-    summary: 'Extend an active booking',
-  },
-});
-```
+Unsafe type casting (`as any`, `as unknown as Type`) is **STRICTLY BANNED**. All parameters, variables, and return values MUST be strongly typed.
 
 ---
 
-## 3. Controllers & Static Type Safety (@ts-rest/express)
+## 4. Services
 
-Controllers implement the contract using `@ts-rest/express` (`initServer().router(...)`).
+Services encapsulate core domain logic and database interactions using **Prisma ORM**.
 
-### Prohibition of Un-Typed `res.json()`
-
-- Handlers MUST NOT use raw, untyped Express `res.json(...)` or `res.status(...)` calls.
-- Handlers MUST return a typed object matching the contract structure: `{ status: <statusCode>, body: <data> }`.
-- **Compiler Safety**: If the object in `body` does not match the contract Zod schema for that status code, the TypeScript compiler WILL fail the build at compile time.
-
-```typescript
-import { initServer } from '@ts-rest/express';
-import { bookingContract } from './booking.contract.js';
-
-const s = initServer();
-
-export const bookingController = s.router(bookingContract, {
-  extendBooking: async ({ params, body }) => {
-    // Input (params & body) is automatically parsed & typed by @ts-rest and Zod
-    const outcome = await bookingService.extendBooking(params.id, body.extraNights);
-
-    if (!outcome.success) {
-      return { status: 400, body: outcome.reason };
-    }
-
-    // Static compiler check: returning non-matching body fields triggers a build error
-    return {
-      status: 200,
-      body: outcome.booking,
-    };
-  },
-});
-```
-
-### Zero-Drift OpenAPI / Swagger Generation
-
-- Do NOT manually edit JSON or YAML OpenAPI files.
-- Automatically generate the OpenAPI specification directly from `@ts-rest` contracts and serve it via `swagger-ui-express`. This guarantees 100% synchronization between implementation and documentation.
-
----
-
-## 4. Service Layer & Database Access (Prisma ORM)
-
-Services encapsulate domain logic and database queries using **Prisma Client**.
-
-### Express Decoupling
-
-- Service functions MUST be completely decoupled from Express HTTP objects (`Request`, `Response`).
-- Services accept typed inputs and return domain-specific types or result objects.
-
-### Parallel Query Execution
-
-- For pagination or multi-query operations, execute queries in parallel using `Promise.all()` to minimize latency:
-
-```typescript
-const [bookings, total] = await Promise.all([
-  prisma.booking.findMany({ where: { unitID }, skip, take }),
-  prisma.booking.count({ where: { unitID } }),
-]);
-```
-
-### Transaction Safety
-
-- Multi-record state updates MUST execute within a Prisma transaction (`prisma.$transaction([...])`) to ensure atomic operations and rollback safety.
+- Inject `PrismaService` into Services.
+- Execute independent queries in parallel using `Promise.all()`.

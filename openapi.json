@@ -1,0 +1,110 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "HealthController_healthCheck",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/booking": {
+      "post": {
+        "operationId": "BookingController_createBooking",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Booking created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Booking creation failed due to date conflict or occupied unit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "example": "The given guest name cannot book the same unit multiple times"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "booking"
+        ]
+      }
+    },
+    "/api/v1/booking/{id}/extend": {
+      "post": {
+        "operationId": "BookingExtensionController_extendBooking",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Booking extended successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Booking extension failed due to date conflict or invalid booking status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "example": "For the requested extension dates, the unit is already occupied"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "example": "Booking not found"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "booking-extension"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Booking API",
+    "description": "NestJS Booking Management API",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "schemas": {
+      "BookingDto": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  }
+}

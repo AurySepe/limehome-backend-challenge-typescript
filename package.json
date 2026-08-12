@@ -1,39 +1,45 @@
 {
   "name": "backend-challenge-typescript",
   "version": "1.0.0",
-  "type": "module",
   "description": "",
-  "main": "src/server.ts",
+  "main": "build/main.js",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
     "postinstall": "prisma generate",
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "test": "prisma migrate deploy && NODE_ENV=test node --import tsx --test --test-concurrency=1 test/*.test.ts"
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "nest start",
+    "test": "prisma migrate deploy && jest --config jest.config.json --runInBand"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@nestjs/common": "^11.1.29",
+    "@nestjs/core": "^11.1.29",
+    "@nestjs/platform-express": "^11.1.29",
+    "@nestjs/swagger": "^11.4.6",
     "@prisma/client": "^6.0.0",
-    "@ts-rest/core": "^3.52.1",
-    "@ts-rest/express": "^3.52.1",
-    "@ts-rest/open-api": "^3.52.1",
-    "@types/express": "^5.0.0",
-    "@types/morgan": "^1.9.4",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
     "date-fns": "^4.4.0",
-    "express": "^5.0.0",
-    "morgan": "^1.10.1",
-    "sqlite3": "^5.1.7",
-    "swagger-ui-express": "^5.0.0",
-    "zod": "^4.4.3"
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
+    "@nestjs/cli": "^11.0.16",
+    "@nestjs/testing": "^11.1.29",
+    "@types/jest": "^30.0.0",
     "@types/sqlite3": "^3.1.8",
-    "@types/swagger-ui-express": "^4.1.8",
+    "@types/supertest": "^7.2.1",
+    "cross-env": "^10.1.0",
+    "jest": "^30.4.2",
     "prisma": "^6.0.0",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.12",
     "tsx": "^4.0.0",
     "typescript": "^5.7.0"
   }
