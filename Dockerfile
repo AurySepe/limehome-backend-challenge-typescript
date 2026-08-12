@@ -2,16 +2,19 @@
 FROM node:24-alpine AS builder
 WORKDIR /app
 
+# Install build tools needed to compile sqlite3 native addon (cached layer)
+RUN apk add --no-cache python3 make g++ py3-setuptools
+
 COPY package*.json ./
+COPY prisma.config.ts ./
+COPY src/prisma ./src/prisma
+
+RUN npm ci
+
 COPY tsconfig.json ./
 COPY nest-cli.json ./
-COPY prisma.config.ts ./
 COPY src ./src
 
-# Install build tools needed to compile sqlite3 native addon
-RUN apk add --no-cache python3 make g++ py3-setuptools
-RUN npm ci
-RUN npx prisma generate
 RUN npm run build
 
 ## Stage 2: Test runner stage
