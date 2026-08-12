@@ -3,9 +3,9 @@ services:
     build:
       context: .
     container_name: typescript-application
+    environment:
+      DATABASE_URL: "file:../../data/app.db"
     volumes:
-      - ./src:/app/src
-      - ./test:/app/test
       - ./data:/app/data
     ports:
       - '8000:8000'

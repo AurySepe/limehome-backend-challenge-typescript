@@ -19,3 +19,9 @@ The testing setup has been significantly enhanced to include both unit tests and
 - **Jest & Supertest**: Replaced Node's built-in test runner with Jest and Supertest, taking advantage of a far more mature ecosystem and robust tooling specifically tailored for NestJS.
 - **In-Memory Network Simulation**: Supertest simulates HTTP requests directly in memory without binding to actual TCP ports.
 - **Isolation & Side-Effect Prevention**: Testing endpoints in memory avoids external side effects and state pollution across test runs. This is critical for preventing flaky tests, which pass or fail unpredictably due to external factors such as database file locks or state leftovers.
+
+### Docker
+
+I implemented a multi-stage Docker build to produce a final image containing only the strict minimum required to run the application. I also integrated a dedicated test stage inside the multi-stage pipeline, making it impossible to produce an image that does not pass the test suite, which is fundamental for preventing the release of broken code to production.
+
+A smaller image also improves startup latency, reduces the attack surface, and lowers upload times and storage costs on the container registry.
